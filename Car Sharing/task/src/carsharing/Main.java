@@ -3,6 +3,14 @@ package carsharing;
 import java.sql.*;
 import java.util.*;
 
+
+implement menu
+have customer entity and dao
+cant create
+can?? list
+cant rent
+
+
 abstract class CarSharingDAO {
     public static String JDBC_DRIVER = "org.h2.Driver";
     public static final String DB_PATH = "jdbc:h2:/Users/jovertki/IdeaProjects/Car Sharing/Car Sharing/task/src/carsharing/db";
@@ -14,27 +22,64 @@ abstract class CarSharingDAO {
     }
 }
 
-abstract class CompanyDAO extends CarSharingDAO{
-    abstract public List<Company> getAll();
-    abstract public void add(Company entity);
+class CustomerDAOImpl extends CarSharingDAO {
+
+
+    public CustomerDAOImpl(String dbname) {
+        setDbURL(dbname);
+        create();
+    }
+
+    private void create() {
+        String sql =  "CREATE TABLE IF NOT EXISTS CUSTOMER " +
+                "(ID INTEGER not NULL AUTO_INCREMENT, " +
+                " NAME VARCHAR(255) UNIQUE NOT NULL, " +
+                "RENTED_CAR_ID INTEGER NOT NULL," +
+                " PRIMARY KEY ( id )," +
+                "CONSTRAINT fk_rented_car FOREIGN KEY (RENTED_CAR_ID) " +
+                "REFERENCES CAR( id ))";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement()) {
+            Class.forName(JDBC_DRIVER);
+            conn.setAutoCommit(true);
+            stmt.executeUpdate(sql);
+        } catch(Exception se) {
+            se.printStackTrace();
+        }
+
+    }
+
+    public List<Customer> getAll() {
+
+        String sql =  "Select * FROM CUSTOMER";
+        List<Customer> out = new LinkedList<>();
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement()) {
+            conn.setAutoCommit(true);
+            ResultSet rs = stmt.executeQuery(sql);
+            // STEP 4: Extract data from result set
+            while(rs.next()) {
+                out.add(new Customer(rs.getInt("id"), rs.getString("name"), rs.getInt("rented_car_id")));
+            }
+        } catch(Exception se) {
+            //Handle errors for JDBC
+            se.printStackTrace();
+        }//Handle errors for Class.forName
+        return out;
+    }
+
+    public void add(Customer entity) {
+
+    }
 }
 
-abstract class CarDAO extends CarSharingDAO{
-    abstract public List<Car> getAll();
-    abstract public void add(Car entity);
-}
-
-abstract class Entity{
-
-}
-class CarDAOImpl extends CarDAO {
+class CarDAOImpl extends CarSharingDAO {
 
     public CarDAOImpl(String dbname) {
         setDbURL(dbname);
         create();
     }
 
-    @Override
     public List<Car> getAll() {
         String sql =  "Select * FROM CAR;";
         return getCars(sql);
@@ -62,8 +107,6 @@ class CarDAOImpl extends CarDAO {
         return out;
     }
 
-
-    @Override
     public void add(Car entity) {
         String sql =  "INSERT INTO CAR(name, COMPANY_ID) " +
                 "VALUES ('" + entity.getName() + "', " + entity.getCompanyId() +");";
@@ -103,7 +146,7 @@ class CarDAOImpl extends CarDAO {
     }
 }
 
-class CompanyDAOImpl extends CompanyDAO {
+class CompanyDAOImpl extends CarSharingDAO {
 
     public CompanyDAOImpl(String dbname) {
         setDbURL(dbname);
@@ -111,7 +154,6 @@ class CompanyDAOImpl extends CompanyDAO {
         updateConstraints();
     }
 
-    @Override
     public List<Company> getAll() {
         String sql =  "Select * FROM COMPANY";
         List<Company> out = new LinkedList<>();
@@ -130,7 +172,6 @@ class CompanyDAOImpl extends CompanyDAO {
         return out;
     }
 
-    @Override
     public void add(Company entity) {
         String sql =  "INSERT INTO COMPANY(name) " +
                         "VALUES ('" + entity.getName() + "');";
@@ -184,7 +225,58 @@ class CompanyDAOImpl extends CompanyDAO {
     }
 }
 
-class Company extends Entity{
+class Customer {
+    private int id = 0;
+    private String name;
+    private int rentedCarId = 0;
+
+    public Customer(int id, String name) {
+        this.id = id;
+        this.name = name;
+    }
+
+    public Customer(String name) {
+        this.name = name;
+    }
+
+    public Customer(String name, int carId) {
+
+        this.name = name;
+        this.rentedCarId = carId;
+    }
+
+    public Customer(int id, String name, int carId) {
+        this.id = id;
+        this.name = name;
+        this.rentedCarId = carId;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public int getRentedCarId() {
+        return rentedCarId;
+    }
+
+    public void setRentedCarId(int rentedCarId) {
+        this.rentedCarId = rentedCarId;
+    }
+}
+
+class Company {
 
     private int id;
     private String name;
@@ -216,7 +308,7 @@ class Company extends Entity{
     }
 }
 
-class Car extends Entity{
+class Car {
     private int id;
     private String name;
     private int companyId;
@@ -262,12 +354,14 @@ class Menu {
 
     private final CompanyDAOImpl companies;
     private final CarDAOImpl cars;
+    private final CustomerDAOImpl customers;
 
     static public final Scanner input = new Scanner(System.in);
 
-    Menu(CompanyDAOImpl companies, CarDAOImpl cars) {
-        this.companies = companies;
-        this.cars = cars;
+    Menu(String dbname) {
+        this.companies = new CompanyDAOImpl(dbname);
+        this.cars = new CarDAOImpl(dbname);
+        this.customers = new CustomerDAOImpl(dbname);
     }
 
     private void companyLoop(Company company){
@@ -353,13 +447,52 @@ class Menu {
     public void mainLoop(){
         while (true) {
             System.out.println("1. Log in as a manager\n" +
+                    "2. Log in as a customer\n" +
+                    "3. Create a customer\n" +
                     "0. Exit");
             switch (input.nextLine().toLowerCase()) {
                 case "1": managerLoop(); break;
+                case "2": loginLoop(); break;
+//                case "3": createCustomer(); break;
                 case "0": return;
             }
         }
     }
+
+    private void loginLoop() {
+        List<Customer> customers = this.customers.getAll();
+        if (customers.size() == 0) {
+            System.out.println("The customer list is empty!");
+            return;
+        } else {
+            System.out.println("Customer list:");
+            int i = 1;
+            for (Customer c : customers) {
+                System.out.println(i + ". " + c.getName());
+                i++;
+            }
+            System.out.println("0. Back");
+        }
+//        int choice = Integer.parseInt(input.nextLine());
+//        if (choice > 0) {
+//            customerLoop(customers.get(choice - 1));
+//        }
+    }
+
+//    private void customerLoop(Customer customer) {
+//        System.out.println("'" + company.getName() + "' company");
+//        while (true) {
+//            System.out.println();
+//            System.out.println("1. Car list\n" +
+//                    "2. Create a car\n" +
+//                    "0. Back");
+//            switch (input.nextLine().toLowerCase()) {
+//                case "1": listCars(company); break;
+//                case "2": createCar(company); break;
+//                case "0": return;
+//            }
+//        }
+//    }
 }
 
 
@@ -369,9 +502,7 @@ public class Main {
         if ("-databaseFileName".equals(args[0]) && args.length >= 2) {
             dbname = args[1];
         }
-        CompanyDAOImpl companies = new CompanyDAOImpl(dbname);
-        CarDAOImpl cars = new CarDAOImpl(dbname);
-        Menu menu = new Menu(companies, cars);
+        Menu menu = new Menu(dbname);
         menu.mainLoop();
     }
 }
