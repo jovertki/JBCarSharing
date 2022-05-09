@@ -4,11 +4,11 @@ import java.sql.*;
 import java.util.*;
 
 
-implement menu
-have customer entity and dao
-cant create
-can?? list
-cant rent
+//implement menu
+//have customer entity and dao
+//cant create
+//can?? list
+//cant rent
 
 
 abstract class CarSharingDAO {
@@ -28,13 +28,14 @@ class CustomerDAOImpl extends CarSharingDAO {
     public CustomerDAOImpl(String dbname) {
         setDbURL(dbname);
         create();
+        updateConstraints();
     }
 
     private void create() {
         String sql =  "CREATE TABLE IF NOT EXISTS CUSTOMER " +
                 "(ID INTEGER not NULL AUTO_INCREMENT, " +
                 " NAME VARCHAR(255) UNIQUE NOT NULL, " +
-                "RENTED_CAR_ID INTEGER NOT NULL," +
+                "RENTED_CAR_ID INTEGER," +
                 " PRIMARY KEY ( id )," +
                 "CONSTRAINT fk_rented_car FOREIGN KEY (RENTED_CAR_ID) " +
                 "REFERENCES CAR( id ))";
@@ -46,6 +47,19 @@ class CustomerDAOImpl extends CarSharingDAO {
         } catch(Exception se) {
             se.printStackTrace();
         }
+
+    }
+
+    private void updateConstraints() {
+        String sql =  "ALTER TABLE CUSTOMER\n" +
+                "ALTER COLUMN RENTED_CAR_ID INT NULL;";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement()) {
+            conn.setAutoCommit(true);
+            stmt.executeUpdate(sql);
+        } catch(Exception se) {
+            se.printStackTrace();
+        }//Handle errors for Class.forName
 
     }
 
@@ -69,7 +83,31 @@ class CustomerDAOImpl extends CarSharingDAO {
     }
 
     public void add(Customer entity) {
+        String sql =  "INSERT INTO Customer(name) " +
+                "VALUES ('" + entity.getName() + "');";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement()) {
+            conn.setAutoCommit(true);
+            stmt.executeUpdate(sql);
+        } catch(Exception se) {
+            //Handle errors for JDBC
+            se.printStackTrace();
+        }//Handle errors for Class.forName
 
+    }
+
+    public void returnCar(Customer customer) {
+        String sql =  "update CUSTOMER\n" +
+                "set RENTED_CAR_ID = NULL\n" +
+                "where id =" + customer.getId() + ";";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement()) {
+            Class.forName(JDBC_DRIVER);
+            conn.setAutoCommit(true);
+            stmt.executeUpdate(sql);
+        } catch(Exception se) {
+            se.printStackTrace();
+        }
     }
 }
 
@@ -80,13 +118,16 @@ class CarDAOImpl extends CarSharingDAO {
         create();
     }
 
-    public List<Car> getAll() {
-        String sql =  "Select * FROM CAR;";
+    public List<Car> getAllCompanyCars(Company company) {
+        String sql =  "Select * FROM CAR WHERE COMPANY_ID = " + company.getId() + ";";
         return getCars(sql);
     }
 
-    public List<Car> getAllCompanyCars(Company company) {
-        String sql =  "Select * FROM CAR WHERE COMPANY_ID = " + company.getId() + ";";
+    public List<Car> getAllAvailableCompanyCars(Company company) {
+        String sql =  "Select distinct car.ID, car.NAME, car.company_id\n" +
+                "FROM CAR\n" +
+                "LEFT JOIN CUSTOMER on CAR.ID = CUSTOMER.RENTED_CAR_ID\n" +
+                "WHERE CAR.COMPANY_ID = " + company.getId() + " AND CUSTOMER.ID IS NULL;";
         return getCars(sql);
     }
 
@@ -98,7 +139,7 @@ class CarDAOImpl extends CarSharingDAO {
             ResultSet rs = stmt.executeQuery(sql);
             // STEP 4: Extract data from result set
             while(rs.next()) {
-                out.add(new Car(rs.getInt("id"), rs.getString("name"), rs.getInt("company_id")));
+                out.add(new Car(rs.getInt("id"), rs.getString("name"), rs.getInt("COMPANY_ID")));
             }
         } catch(Exception se) {
             //Handle errors for JDBC
@@ -143,6 +184,43 @@ class CarDAOImpl extends CarSharingDAO {
             se.printStackTrace();
         }//Handle errors for Class.forName
 
+    }
+
+    public void rent(Car car, Customer customer) {
+        String sql =  "update CUSTOMER\n" +
+                "set RENTED_CAR_ID = " + car.getId() + "\n" +
+                "where ID = " + customer.getId() + ";";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement()) {
+            Class.forName(JDBC_DRIVER);
+            conn.setAutoCommit(true);
+            stmt.executeUpdate(sql);
+        } catch(Exception se) {
+            se.printStackTrace();
+        }
+    }
+
+    public String[] getCustomerCarData(Customer customer) {
+        String sql = "SELECT C2.name as company_name, C.name\n as car_name " +
+                "FROM customer\n" +
+                "join CAR C on CUSTOMER.RENTED_CAR_ID = C.ID\n" +
+                "join COMPANY C2 on C.COMPANY_ID = C2.ID\n" +
+                "where customer.id = "+ customer.getId() + ";";
+        String[] out = new String[2];
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement()) {
+            conn.setAutoCommit(true);
+            ResultSet rs = stmt.executeQuery(sql);
+            // STEP 4: Extract data from result set
+            while(rs.next()) {
+                out[0] = rs.getString("company_name");
+                out[1] = rs.getString("car_name");
+            }
+        } catch(Exception se) {
+            //Handle errors for JDBC
+            se.printStackTrace();
+        }//Handle errors for Class.forName
+        return out;
     }
 }
 
@@ -227,22 +305,12 @@ class CompanyDAOImpl extends CarSharingDAO {
 
 class Customer {
     private int id = 0;
-    private String name;
+    private final String name;
     private int rentedCarId = 0;
 
-    public Customer(int id, String name) {
-        this.id = id;
-        this.name = name;
-    }
 
     public Customer(String name) {
         this.name = name;
-    }
-
-    public Customer(String name, int carId) {
-
-        this.name = name;
-        this.rentedCarId = carId;
     }
 
     public Customer(int id, String name, int carId) {
@@ -255,16 +323,8 @@ class Customer {
         return id;
     }
 
-    public void setId(int id) {
-        this.id = id;
-    }
-
     public String getName() {
         return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
     }
 
     public int getRentedCarId() {
@@ -278,8 +338,8 @@ class Customer {
 
 class Company {
 
-    private int id;
-    private String name;
+    private final int id;
+    private final String name;
 
     public Company(String name) {
         this.id = 0;
@@ -295,23 +355,17 @@ class Company {
         return name;
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
 
     public int getId() {
         return id;
     }
 
-    public void setId(int id) {
-        this.id = id;
-    }
 }
 
 class Car {
-    private int id;
-    private String name;
-    private int companyId;
+    private final int id;
+    private final String name;
+    private final int companyId;
 
     public Car(String name, int companyId) {
         this.id = 0;
@@ -329,25 +383,15 @@ class Car {
         return id;
     }
 
-    public void setId(int id) {
-        this.id = id;
-    }
 
     public String getName() {
         return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
     }
 
     public int getCompanyId() {
         return companyId;
     }
 
-    public void setCompanyId(int companyId) {
-        this.companyId = companyId;
-    }
 }
 
 class Menu {
@@ -409,9 +453,20 @@ class Menu {
                     "2. Create a company\n" +
                     "0. Back");
             switch (input.nextLine().toLowerCase()) {
-                case "1": listCompanies(); break;
+                case "1":
+                    startCompanyLoop(listCompanies());
+                break;
                 case "2": createCompany(); break;
                 case "0": return;
+            }
+        }
+    }
+
+    private void startCompanyLoop(List<Company> companies){
+        if (companies.size() > 0) {
+            int choice = Integer.parseInt(input.nextLine());
+            if (choice > 0) {
+                companyLoop(companies.get(choice - 1));
             }
         }
     }
@@ -424,11 +479,11 @@ class Menu {
         System.out.println("The company was created!");
     }
 
-    private void listCompanies() {
+    private List<Company> listCompanies() {
         List<Company> companies = this.companies.getAll();
         if (companies.size() == 0) {
             System.out.println("The company list is empty!");
-            return;
+            return companies;
         } else {
             System.out.println("Choose the company:");
             int i = 1;
@@ -438,10 +493,7 @@ class Menu {
             }
             System.out.println("0. Back");
         }
-        int choice = Integer.parseInt(input.nextLine());
-        if (choice > 0) {
-            companyLoop(companies.get(choice - 1));
-        }
+        return companies;
     }
 
     public void mainLoop(){
@@ -453,10 +505,17 @@ class Menu {
             switch (input.nextLine().toLowerCase()) {
                 case "1": managerLoop(); break;
                 case "2": loginLoop(); break;
-//                case "3": createCustomer(); break;
+                case "3": createCustomer(); break;
                 case "0": return;
             }
         }
+    }
+
+    private void createCustomer() {
+        System.out.println();
+        System.out.println("Enter the customer name: ");
+        customers.add(new Customer(input.nextLine()));
+        System.out.println("The customer was added!");
     }
 
     private void loginLoop() {
@@ -473,26 +532,87 @@ class Menu {
             }
             System.out.println("0. Back");
         }
-//        int choice = Integer.parseInt(input.nextLine());
-//        if (choice > 0) {
-//            customerLoop(customers.get(choice - 1));
-//        }
+        int choice = Integer.parseInt(input.nextLine());
+        if (choice > 0) {
+            customerLoop(customers.get(choice - 1));
+        }
     }
 
-//    private void customerLoop(Customer customer) {
-//        System.out.println("'" + company.getName() + "' company");
-//        while (true) {
-//            System.out.println();
-//            System.out.println("1. Car list\n" +
-//                    "2. Create a car\n" +
-//                    "0. Back");
-//            switch (input.nextLine().toLowerCase()) {
-//                case "1": listCars(company); break;
-//                case "2": createCar(company); break;
-//                case "0": return;
-//            }
-//        }
-//    }
+    private void customerLoop (Customer customer) {
+        while (true) {
+            System.out.println();
+            System.out.println("1. Rent a car\n" +
+                    "2. Return a rented car\n" +
+                    "3. My rented car\n" +
+                    "0. Back");
+            switch (input.nextLine().toLowerCase()) {
+                case "1": rentCar(customer); break;
+                case "2": returnCar(customer); break;
+                case "3": showRentedCar(customer); break;
+                case "0": return;
+            }
+        }
+    }
+
+    private void showRentedCar(Customer customer) {
+        if (customer.getRentedCarId() == 0) {
+            System.out.println("You didn't rent a car!");
+            return;
+        }
+        String[] data = cars.getCustomerCarData(customer);
+        System.out.println("Your rented car: ");
+        System.out.println(data[1]);
+        System.out.println("Company: ");
+        System.out.println(data[0]);
+    }
+
+    private void returnCar(Customer customer) {
+        if (customer.getRentedCarId() == 0) {
+            System.out.println("You didn't rent a car!");
+            return;
+        }
+        customers.returnCar(customer);
+        customer.setRentedCarId(0);
+        System.out.println("You've returned a rented car!");
+    }
+
+    private void chooseCarLoop(Company company, Customer customer) {
+        List<Car> cars = this.cars.getAllAvailableCompanyCars(company);
+        if (cars.size() == 0) {
+            System.out.println("The cars list is empty!");
+            return;
+        } else {
+            System.out.println("Choose the car:");
+            int i = 1;
+            for (Car c : cars) {
+                System.out.println(i + ". " + c.getName());
+                i++;
+            }
+            System.out.println("0. Back");
+        }
+        int choice = Integer.parseInt(input.nextLine());
+        if (choice > 0) {
+            Car rented = cars.get(choice - 1);
+            this.cars.rent(rented, customer);
+            customer.setRentedCarId(rented.getId());
+            System.out.println("\nYou rented '" + rented.getName() + "'");
+        }
+    }
+
+    private void rentCar(Customer customer) {
+        if (customer.getRentedCarId() != 0) {
+            System.out.println("You've already rented a car!");
+            return;
+        }
+        List<Company> companies = listCompanies();
+        if (companies.size() == 0) {
+            return;
+        }
+        int choice = Integer.parseInt(input.nextLine());
+        if (choice > 0) {
+            chooseCarLoop(companies.get(choice - 1), customer);
+        }
+    }
 }
 
 
