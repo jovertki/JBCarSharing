@@ -619,7 +619,7 @@ class Menu {
 public class Main {
     public static void main(String[] args) {
         String dbname = "carsharingDefault";
-        if ("-databaseFileName".equals(args[0]) && args.length >= 2) {
+        if (args.length > 0 && "-databaseFileName".equals(args[0]) && args.length >= 2) {
             dbname = args[1];
         }
         Menu menu = new Menu(dbname);
